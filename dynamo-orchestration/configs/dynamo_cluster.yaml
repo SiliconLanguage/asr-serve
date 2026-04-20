@@ -1,0 +1,54 @@
+# Dynamo Cluster Configuration
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+# Consumed by both the Rust shim (dynamo-shim) and the Python Smart Router.
+
+# ── Router ────────────────────────────────────────────────────────────────────
+router_address: "10.0.0.5:50051"
+
+# ── NIXL RDMA ─────────────────────────────────────────────────────────────────
+nixl_rdma_device: "mlx5_0"      # InfiniBand / RoCE device for VRAM transfers
+
+# ── Prefill Workers (GPU compute-heavy) ───────────────────────────────────────
+prefill_workers:
+  - id:      "prefill-0"
+    address: "10.0.1.10:50051"
+    cuda_device: 0
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 4
+
+  - id:      "prefill-1"
+    address: "10.0.1.11:50051"
+    cuda_device: 0
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 4
+
+# ── Decode Workers (VRAM memory-bound) ────────────────────────────────────────
+decode_workers:
+  - id:      "decode-0"
+    address: "10.0.2.10:50051"
+    cuda_device: 0
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 8
+    kv_ttl_ms: 500
+
+  - id:      "decode-1"
+    address: "10.0.2.11:50051"
+    cuda_device: 0
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 8
+    kv_ttl_ms: 500
+
+  - id:      "decode-2"
+    address: "10.0.2.12:50051"
+    cuda_device: 1
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 8
+    kv_ttl_ms: 500
+
+  - id:      "decode-3"
+    address: "10.0.2.13:50051"
+    cuda_device: 1
+    model_path: "/models/whisper-large-v3"
+    max_batch_size: 8
+    kv_ttl_ms: 500

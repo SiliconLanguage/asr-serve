@@ -1,0 +1,137 @@
+# LLM-d Worker Configuration – Blackwell ASR Inference
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+# LLM-d (https://github.com/llm-d/llm-d) is the Kubernetes-native inference
+# scheduler that integrates with vLLM and Dynamo for fleet-scale ASR serving.
+#
+# Deploy with:
+#   kubectl apply -f configs/llm_d_worker.yaml
+
+apiVersion: inference.llm-d.ai/v1alpha1
+kind: InferenceModel
+metadata:
+  name: whisper-large-v3-asr
+  namespace: asr-serve
+  labels:
+    app: asr-serve
+    tier: inference
+    accelerator: blackwell
+spec:
+  modelName: "whisper-large-v3"
+  inferencePoolRef:
+    name: asr-inference-pool
+
+---
+apiVersion: inference.llm-d.ai/v1alpha1
+kind: InferencePool
+metadata:
+  name: asr-inference-pool
+  namespace: asr-serve
+spec:
+  targetPortNumber: 8000
+  selector:
+    app: asr-vllm-worker
+  extensionRef:
+    name: asr-epp
+
+---
+# vLLM inference pods running on Blackwell GPU nodes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asr-vllm-worker
+  namespace: asr-serve
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: asr-vllm-worker
+  template:
+    metadata:
+      labels:
+        app: asr-vllm-worker
+        accelerator: blackwell
+    spec:
+      # Schedule only on nodes with Blackwell GPUs.
+      nodeSelector:
+        nvidia.com/gpu.product: "NVIDIA-B200"
+      tolerations:
+        - key:    "nvidia.com/gpu"
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: "nvcr.io/nvidia/vllm:blackwell-latest"
+          args:
+            - "--model"
+            - "/models/whisper-large-v3"
+            - "--tensor-parallel-size"
+            - "4"
+            - "--quantization"
+            - "fp8"                    # placeholder; use nvfp4 when available
+            - "--kv-cache-dtype"
+            - "fp8_e4m3"
+            - "--max-model-len"
+            - "4096"
+            - "--gpu-memory-utilization"
+            - "0.92"
+            - "--port"
+            - "8000"
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            limits:
+              nvidia.com/gpu: "4"      # 4× B200 per pod
+              memory: "512Gi"
+            requests:
+              nvidia.com/gpu: "4"
+              memory: "512Gi"
+          volumeMounts:
+            - name: model-store
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0,1,2,3"
+            - name: NCCL_IB_HCA
+              value: "mlx5_0"          # InfiniBand for NVLink / RDMA
+            - name: VLLM_WORKER_MULTIPROC_METHOD
+              value: "spawn"
+      volumes:
+        - name: model-store
+          persistentVolumeClaim:
+            claimName: model-store-pvc
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "32Gi"
+
+---
+# Endpoint Picker Pod (EPP) – llm-d request scheduler.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asr-epp
+  namespace: asr-serve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: asr-epp
+  template:
+    metadata:
+      labels:
+        app: asr-epp
+    spec:
+      containers:
+        - name: epp
+          image: "ghcr.io/llm-d/llm-d-inference-scheduler:latest"
+          args:
+            - "--pool-name=asr-inference-pool"
+            - "--pool-namespace=asr-serve"
+            - "--port=9002"
+          ports:
+            - containerPort: 9002
+              name: grpc
