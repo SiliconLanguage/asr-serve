@@ -1,0 +1,80 @@
+# Blackwell-Native Optimisation Configuration
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+# PLACEHOLDER configuration for Blackwell (GB200/B200) GPU optimisations.
+# Enable these settings once the corresponding vLLM / CUDA toolkit support
+# is available in your deployment environment.
+#
+# Target hardware
+#   - NVIDIA GB200 NVL72 (72× B200 GPUs per rack)
+#   - CUDA 12.8+ with Blackwell Tensor Core support
+#   - cuDNN 9.x Blackwell kernels
+#   - NVLink 5.0 (900 GB/s bidirectional per GPU pair)
+
+# ── Precision / Microscaling ──────────────────────────────────────────────────
+precision:
+  # NVFP4 (4-bit NV microscaling format) – 5th-gen Tensor Core native.
+  # Requires: CUDA 12.8+ and vLLM NVFP4 quantisation support.
+  # PLACEHOLDER: uncomment when runtime support is confirmed.
+  weight_dtype:      "nvfp4"          # PLACEHOLDER
+  activation_dtype:  "fp8_e4m3"       # FP8-E4M3 activations
+  kv_cache_dtype:    "fp8_e4m3"       # FP8 KV cache (50% VRAM reduction vs BF16)
+  accumulator_dtype: "fp32"           # Full-precision accumulation in Tensor Cores
+
+  # Microscaling block size for NVFP4 (default per NVIDIA spec: 16).
+  nvfp4_block_size:  16               # PLACEHOLDER
+
+# ── Tensor Core Configuration ─────────────────────────────────────────────────
+tensor_cores:
+  # 5th-generation Tensor Core features (Blackwell).
+  generation:        5
+  # Enable fine-grained structured sparsity (2:4) for 2× throughput.
+  sparsity_2_4:      true             # PLACEHOLDER – requires sparse weights
+  # Matrix multiply accumulate (MMA) tile size.
+  mma_tile:          "m64n256k64"     # Blackwell-optimal WGMMA tile
+
+# ── FlashAttention-3 ──────────────────────────────────────────────────────────
+flash_attention:
+  version:           3
+  # FA3 Blackwell async pipeline (overlaps WGMMA and softmax).
+  async_pipeline:    true             # PLACEHOLDER – FA3 Blackwell mode
+  # Persistent kernels reduce kernel launch overhead.
+  persistent_kernel: true             # PLACEHOLDER
+
+# ── Memory / KV Cache ─────────────────────────────────────────────────────────
+memory:
+  # Paged KV cache for variable-length sequences.
+  paged_kv_cache:    true
+  block_size:        16               # tokens per page
+  # GPU memory fraction reserved for KV cache.
+  kv_cache_fraction: 0.6
+  # Use unified memory for CPU-GPU KV spill (Blackwell HBM3e → CPU DDR5).
+  unified_memory_spill: false         # enable if VRAM is insufficient
+
+# ── Inference Throughput Targets ──────────────────────────────────────────────
+# These are aspirational targets for a GB200 NVL72 system with NVFP4.
+targets:
+  # Real-time factor < 0.01 (process 1 s of audio in < 10 ms).
+  rtf_target:        0.01
+  # Tokens per second per GPU (Whisper large-v3 decoder).
+  tokens_per_second_per_gpu: 50000    # PLACEHOLDER – benchmark required
+  # Maximum concurrent ASR streams per 4-GPU pod.
+  max_concurrent_streams: 256
+
+# ── Speculative Decoding ──────────────────────────────────────────────────────
+speculative_decoding:
+  enabled:           true
+  algorithm:         "eagle2"         # Eagle-2 tree-based speculative decode
+  num_draft_tokens:  5
+  # Draft model runs at FP16 for speed; accepts/rejects tokens for the target.
+  draft_model_dtype: "float16"
+
+# ── Compile / Kernel Cache ────────────────────────────────────────────────────
+compilation:
+  # torch.compile with Blackwell-optimised inductor backend.
+  torch_compile:     true             # PLACEHOLDER – requires PyTorch 2.5+
+  backend:           "inductor"
+  mode:              "max-autotune"
+  # CUDA graph capture reduces kernel launch overhead for static shapes.
+  cuda_graphs:       true
+  cuda_graph_max_batch_size: 256

@@ -1,0 +1,70 @@
+# AI Factory Configuration
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
+# ── Inference endpoint (vLLM worker) ─────────────────────────────────────────
+inference_endpoint: "http://10.0.0.5:8000"
+
+# ── Telemetry / metrics endpoint ─────────────────────────────────────────────
+metrics_endpoint: "http://10.0.0.5:9090"
+
+# ── Evaluation loop ───────────────────────────────────────────────────────────
+evaluation:
+  # How often to run a full evaluation cycle (seconds).
+  interval_s:           300
+  # Minimum WER improvement required to consider promotion.
+  min_wer_delta:        0.02
+  # Number of telemetry samples to evaluate per cycle.
+  n_samples:            100
+
+# ── NAT Agent ─────────────────────────────────────────────────────────────────
+nat_agent:
+  llm_endpoint:         "https://integrate.api.nvidia.com/v1"
+  llm_model:            "meta/llama-3.1-70b-instruct"
+  # API key sourced from NVIDIA_API_KEY environment variable.
+  max_iterations:       10
+  cycle_interval_s:     600
+
+# ── MCP Server ────────────────────────────────────────────────────────────────
+mcp:
+  # MCP runs over stdio by default; no port needed.
+  enabled: true
+
+# ── Agent Hints defaults ──────────────────────────────────────────────────────
+agent_hints:
+  default_priority:   5
+  default_kv_ttl_ms:  500
+  # KV TTL bounds enforced regardless of agent decisions.
+  min_kv_ttl_ms:      100
+  max_kv_ttl_ms:      2000
+
+# ── Go control plane ──────────────────────────────────────────────────────────
+control_plane:
+  http_addr:            ":7070"
+  dynamo_shim_addr:     "10.0.0.5:7071"
+  broadcast_interval_ms: 100
+
+# ── Model candidates ──────────────────────────────────────────────────────────
+candidates:
+  - model_id:   "whisper-large-v3"
+    model_path: "/models/whisper-large-v3"
+    version:    "3.0"
+    is_active:  true
+    tags:       ["openai", "encoder-decoder"]
+
+  - model_id:   "whisper-large-v3-turbo"
+    model_path: "/models/whisper-large-v3-turbo"
+    version:    "3.0-turbo"
+    is_active:  false
+    tags:       ["openai", "encoder-decoder", "turbo"]
+
+  - model_id:   "canary-1b"
+    model_path: "/models/canary-1b"
+    version:    "1.0"
+    is_active:  false
+    tags:       ["nvidia", "nemo", "ctc-rnnt"]
+
+  - model_id:   "parakeet-tdt-1.1b"
+    model_path: "/models/parakeet-tdt-1.1b"
+    version:    "1.1"
+    is_active:  false
+    tags:       ["nvidia", "nemo", "tdt"]

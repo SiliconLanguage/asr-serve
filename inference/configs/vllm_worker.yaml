@@ -1,0 +1,63 @@
+# vLLM Worker Configuration – Blackwell-Optimised ASR
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+# Targets NVIDIA Blackwell GB200 / B200 GPUs.
+# Key optimisations:
+#   - NVFP4 weight quantisation (4-bit NV microscaling)
+#   - FP8-E4M3 activations and KV cache
+#   - FlashAttention-3 (Blackwell native, hardware-accelerated)
+#   - Chunked prefill with 2048-token chunks
+#   - Eagle-2 speculative decoding for low-latency decode
+
+model:
+  # Whisper large-v3 in a vLLM-compatible HuggingFace format.
+  # Replace with your model repository path or HF model ID.
+  name_or_path: "/models/whisper-large-v3"
+  tokenizer:    "/models/whisper-large-v3"
+  task:         "automatic-speech-recognition"
+
+engine:
+  # Tensor parallelism across Blackwell NVLink fabric.
+  tensor_parallel_size:   4
+  # Pipeline parallelism (encoder on first stage, decoder on rest).
+  pipeline_parallel_size: 1
+  # Maximise GPU utilisation; reduce if OOM.
+  gpu_memory_utilization: 0.92
+  # Context length (Whisper uses fixed 1500 encoder tokens + decode budget).
+  max_model_len:  4096
+  max_num_seqs:   256
+  max_num_batched_tokens: 8192
+
+quantization:
+  # NVFP4 microscaling – exploits Blackwell 5th-gen Tensor Cores.
+  # Requires vLLM built with CUDA 12.8+ and Blackwell Tensor Core support.
+  method:        "nvfp4"        # PLACEHOLDER – enable when vLLM supports NVFP4
+  # Fall-back for non-Blackwell nodes:
+  fallback:      "fp8"          # FP8-E4M3 via vLLM --quantization fp8
+
+attention:
+  # FlashAttention-3 (Blackwell native implementation).
+  backend:       "flashattention3"   # PLACEHOLDER – FA3 Blackwell mode
+  # FP8 KV-cache reduces VRAM footprint by ~50% vs BF16.
+  kv_cache_dtype: "fp8_e4m3"
+
+prefill:
+  # Chunked prefill prevents head-of-line blocking on long audio.
+  chunked_prefill_enabled: true
+  max_prefill_tokens:      2048
+
+speculative_decoding:
+  # Eagle-2 draft model for speculative decode (reduces decode latency ~2x).
+  # Set to null to disable.
+  draft_model:   "/models/whisper-large-v3-eagle2-draft"
+  num_speculative_tokens: 5
+
+serving:
+  host: "0.0.0.0"
+  port: 8000
+  # OpenAI-compatible endpoint for easy integration.
+  served_model_name: "whisper-large-v3-blackwell"
+
+logging:
+  disable_log_requests: false
+  log_level: "INFO"
